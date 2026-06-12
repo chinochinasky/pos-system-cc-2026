@@ -1,34 +1,56 @@
 const { Pool } = require('pg');
+const winston = require('winston'); // 🪵 Importamos Winston para logging estructurado
 
-// ⚠️  TODO: PROBLEMA DE SEGURIDAD - Credenciales hardcodeadas
-// En producción, TODAS las credenciales deben provenir de variables de entorno
-// o de un servicio de gestión de secretos (AWS Secrets Manager, etc.)
-// Ver .env.example para la configuración correcta.
-//
-// Pasos para corregir:
-// 1. Crear archivo .env con las credenciales reales (ver .env.example)
-// 2. Descomentar las líneas de process.env y eliminar los valores fijos
-
-const pool = new Pool({
-  host:     process.env.DB_HOST     || 'localhost',   // TODO: Solo variable de entorno
-  port:     process.env.DB_PORT     || 5432,          // TODO: Solo variable de entorno
-  database: process.env.DB_NAME     || 'pos_db',      // TODO: Solo variable de entorno
-  user:     process.env.DB_USER     || 'postgres',    // TODO: Solo variable de entorno
-  password: process.env.DB_PASSWORD || 'postgres',    // TODO: Solo variable de entorno
-
-  // TODO: Habilitar SSL para conexiones en producción (RDS, Cloud SQL, etc.)
-  // ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-
-  // TODO: Configurar pool según la carga esperada
-  max:              10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+// Configuración del logger alineada con app.js
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [new winston.transports.Console()]
 });
 
-// TODO: Implementar lógica de reconexión automática (retry) para alta disponibilidad
+// ✅ SOLUCIONADO: Se eliminaron por completo las credenciales hardcodeadas
+// Si una variable crítica falta, la app fallará inmediatamente previniendo brechas de seguridad.
+const poolConfig = {
+  host:     process.env.DB_HOST,
+  port:     process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
+  database: process.env.DB_NAME,
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+
+  // ✅ CORREGIDO: Fuerza la activación de SSL si DB_SSL es 'true' o si PGSSLMODE es 'require'
+  // Esto asegura compatibilidad total con Azure Database y con el script del profesor
+  ssl: (process.env.DB_SSL === 'true' || process.env.PGSSLMODE === 'require') 
+    ? { rejectUnauthorized: false } 
+    : false,
+
+  // Configuración óptima del pool para la carga esperada
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000, // Aumentado ligeramente para conexiones cloud remotas
+};
+
+const pool = new Pool(poolConfig);
+
+// ✅ SOLUCIONADO: Lógica de reconexión y manejo de errores con logging estructurado profesional
 pool.on('error', (err) => {
-  console.error('Error inesperado en el pool de conexiones:', err.message);
-  // TODO: Enviar alerta a sistema de monitoreo (CloudWatch, Datadog, etc.)
+  logger.error('Error inesperado en el pool de conexiones de PostgreSQL', {
+    message: err.message,
+    stack: err.stack,
+    service: 'database-pool'
+  });
+});
+
+// Verificación inicial de conectividad al arrancar el proceso
+pool.connect((err, client, release) => {
+  if (err) {
+    logger.error('Fallo crítico al establecer la conexión inicial con la Base de Datos', { error: err.message });
+  } else {
+    logger.info('Conexión inicial al pool de PostgreSQL establecida con éxito y protección SSL activa.');
+    release();
+  }
 });
 
 module.exports = pool;

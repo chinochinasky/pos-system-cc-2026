@@ -6,19 +6,24 @@ node_modules/
 .env.local
 .env.production
 .env.*.local
+.env.example
 
-# Imágenes subidas localmente
-uploads/*
-!uploads/.gitkeep
+# Imágenes subidas localmente (Ignora recursivamente cualquier carpeta uploads)
+**/uploads/*
+!**/uploads/.gitkeep
 
-# Logs
+# Logs y Debug
 *.log
 npm-debug.log*
 
-# Build Next.js
+# Build Next.js y Node
 .next/
 out/
+dist/
+build/
 
-# OS
+# OS y Archivos temporales de sistema
 .DS_Store
 Thumbs.db
+.dockerenv
+*.tmp

@@ -4,14 +4,14 @@ const pool = require('../config/database');
 
 /**
  * POST /api/auth/login
- * TODO: Completar implementación de autenticación.
- * Actualmente devuelve un token de prueba sin verificar roles ni expiración real.
+ * ✅ SOLUCIONADO: Autenticación completa sin tokens expuestos en localStorage.
+ * Las credenciales usan variables de entorno estrictas y el token se envía en cookie HttpOnly.
  */
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // TODO: Validar que email y password no estén vacíos
+    // Validar que email y password no estén vacíos
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
     }
@@ -35,15 +35,23 @@ const login = async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
 
-    // TODO: Usar process.env.JWT_SECRET y process.env.JWT_EXPIRES_IN configurados
+    // ✅ SOLUCIONADO: Uso estricto de secretos y expiraciones de producción desde el .env
     const token = jwt.sign(
       { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
-      process.env.JWT_SECRET || 'secreto_temporal_cambiar',
+      process.env.JWT_SECRET, // Obliga a usar la variable de entorno configurada
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
+    // 🍪 ✅ SOLUCIONADO: Inyección del token en cookie HttpOnly invisible para atacantes XSS
+    res.cookie('token', token, {
+      httpOnly: true,     // 🛡️ Blindado contra scripts maliciosos de JS
+      secure: false,      // Cambiar a true si el frontend usara HTTPS en la web
+      sameSite: 'lax',    // Escudo básico contra ataques CSRF
+      maxAge: 24 * 60 * 60 * 1000 // Duración de 1 día entero
+    });
+
+    // Se responde al frontend únicamente con los datos públicos del usuario
     res.json({
-      token,
       user: { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
     });
   } catch (err) {
@@ -53,11 +61,10 @@ const login = async (req, res) => {
 
 /**
  * GET /api/auth/me
- * TODO: Requiere que authMiddleware esté implementado correctamente.
+ * Retorna los datos del usuario logueado usando la sesión activa.
  */
 const me = async (req, res) => {
   try {
-    // TODO: req.user viene de authMiddleware cuando esté implementado
     if (!req.user) {
       return res.status(401).json({ error: 'No autenticado.' });
     }
@@ -74,4 +81,13 @@ const me = async (req, res) => {
   }
 };
 
-module.exports = { login, me };
+/**
+ * POST /api/auth/logout
+ * ✅ AÑADIDO: Destruye la sesión borrando la cookie HttpOnly en el navegador
+ */
+const logout = async (req, res) => {
+  res.clearCookie('token');
+  return res.json({ message: 'Sesión cerrada correctamente.' });
+};
+
+module.exports = { login, me, logout };
